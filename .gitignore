@@ -1,0 +1,53 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+.env
+
+# Node.js dependencies
+node_modules/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data and models
+data/
+models/
+*.pt
+*.bin
+*.safetensors
+
+# Build artifacts
+frontend/dist/
+backend/dist/
+
+# Environment variables
+.env.local
+.env.*.local
+
+# Database
+*.sqlite
+*.db
+chroma_db/
+
+# HuggingFace cache
+.cache/
+huggingface/
