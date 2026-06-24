@@ -19,17 +19,156 @@ PROMPT_TEMPLATE = """你是一位实验室安全专家。请根据以下参考�
 
 用户问题：{question}
 
-输出格式（必须严格遵守，不要添加额外内容）：
+请严格按照以下格式输出，不要添加任何额外内容：
+隐患类型：
+风险等级：
+处置步骤：
+预防建议：
+
+确保每个部分都有内容，不要重复标题。"""
+
+CHAT_PROMPT_TEMPLATE = """你是一位友好的实验室安全助手。用户现在说："{question}"
+
+如果这是打招呼、闲聊或与实验室安全无关的问题，请用自然、友好的语言回复。
+如果这是实验室安全相关的问题，请按照以下格式回答：
 隐患类型：xxx
 风险等级：高/中/低
 处置步骤：1. xxx 2. xxx ...
 预防建议：xxx
 """
 
+GREETING_KEYWORDS = ["你好", "您好", "嗨", "Hello", "Hi", "早上好", "下午好", "晚上好", "拜拜", "再见", "谢谢", "感谢", "你是谁", "介绍一下"]
+
+def is_greeting(question: str) -> bool:
+    """判断是否是打招呼或闲聊"""
+    question_lower = question.lower().strip()
+    for keyword in GREETING_KEYWORDS:
+        if keyword.lower() in question_lower:
+            return True
+    return False
+
+def is_safety_related(question: str) -> bool:
+    """简单判断是否与实验室安全相关"""
+    safety_keywords = ["安全", "隐患", "风险", "危险", "实验", "试剂", "化学品", "防护", "操作", "处理", "储存", "泄漏", "火灾", "爆炸", "中毒", "腐蚀", "实验台", "通风橱", "气瓶", "废液"]
+    for keyword in safety_keywords:
+        if keyword in question:
+            return True
+    return False
+
+def clean_answer(answer: str) -> str:
+    """清理回答，移除不相关内容和重复标题"""
+    # 移除YOLO检测结果（如surfboard、chair等）
+    yolo_classes = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 
+                    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
+                    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 
+                    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 
+                    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 
+                    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 
+                    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 
+                    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 
+                    'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 
+                    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 
+                    'toothbrush', 'fire extinguisher', 'trash can']
+    
+    lines = answer.split('\n')
+    cleaned_lines = []
+    seen_sections = set()
+    
+    for line in lines:
+        # 跳过空行
+        if not line.strip():
+            continue
+        
+        # 跳过YOLO检测结果行
+        contains_yolo = False
+        for cls in yolo_classes:
+            if cls.lower() in line.lower():
+                contains_yolo = True
+                break
+        if contains_yolo:
+            continue
+        
+        # 跳过包含置信度的行（如72.6%）
+        if '%' in line and (line.strip().endswith('%') or '(' in line and '%)' in line):
+            continue
+        
+        # 跳过检测到的物体标题
+        if '检测到的物体' in line or 'detections' in line.lower():
+            continue
+        
+        # 处理重复的标题
+        line_stripped = line.strip()
+        if line_stripped.startswith('隐患类型：'):
+            if '隐患类型' not in seen_sections:
+                cleaned_lines.append(line)
+                seen_sections.add('隐患类型')
+        elif line_stripped.startswith('风险等级：'):
+            if '风险等级' not in seen_sections:
+                cleaned_lines.append(line)
+                seen_sections.add('风险等级')
+        elif line_stripped.startswith('处置步骤：') or line_stripped.startswith('处置步骤:'):
+            if '处置步骤' not in seen_sections:
+                cleaned_lines.append(line)
+                seen_sections.add('处置步骤')
+            else:
+                # 如果已经有处置步骤标题，检查是否是内容行
+                if not line_stripped.startswith('处置步骤'):
+                    cleaned_lines.append(line)
+        elif line_stripped.startswith('预防建议：') or line_stripped.startswith('预防建议:'):
+            if '预防建议' not in seen_sections:
+                cleaned_lines.append(line)
+                seen_sections.add('预防建议')
+            else:
+                # 如果已经有预防建议标题，检查是否是内容行
+                if not line_stripped.startswith('预防建议'):
+                    cleaned_lines.append(line)
+        else:
+            # 普通内容行
+            cleaned_lines.append(line)
+    
+    return '\n'.join(cleaned_lines)
+
 @router.post("/ask")
 def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     print(f"收到问答请求: {question.question}")
     
+    # 判断是否是打招呼或闲聊
+    if is_greeting(question.question):
+        print("检测到打招呼，使用闲聊模式")
+        llm_client = ApiClient()
+        answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
+        
+        record = QARecord(
+            user_id=question.user_id,
+            question=question.question,
+            answer=answer,
+            risk_level="无"
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        
+        return {"answer": answer, "risk_level": "无"}
+    
+    # 判断是否明显与安全无关
+    if not is_safety_related(question.question):
+        print("检测到非安全问题，使用闲聊模式")
+        llm_client = ApiClient()
+        answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
+        
+        record = QARecord(
+            user_id=question.user_id,
+            question=question.question,
+            answer=answer,
+            risk_level="无"
+        )
+        db.add(record)
+        db.commit()
+        db.refresh(record)
+        
+        return {"answer": answer, "risk_level": "无"}
+    
+    # 安全相关问题，使用RAG流程
     # 1. 检索相关知识
     docs = rag.retrieve(question.question, top_k=5)
     context = "\n\n".join(docs) if docs else "无相关参考资料。"
@@ -45,15 +184,19 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     print(f"ApiClient提供商: {llm_client.provider}")
     print(f"ApiClient模型URL: {llm_client.api_base_url}")
     answer = llm_client.generate(prompt)
+    
+    # 4. 清理回答，移除不相关内容和重复标题
+    answer = clean_answer(answer)
+    print(f"清理后的回答: {answer[:400]}...")
 
-    # 4. 解析风险等级（用于存储）
+    # 5. 解析风险等级（用于存储）
     risk = "中"
     if "风险等级：高" in answer:
         risk = "高"
     elif "风险等级：低" in answer:
         risk = "低"
 
-    # 5. 保存到数据库
+    # 6. 保存到数据库
     record = QARecord(
         user_id=question.user_id,
         question=question.question,
