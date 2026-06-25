@@ -48,18 +48,34 @@
     </main>
     
     <footer class="main-footer">
-      <p class="footer-text">© 2024 实验室安全智能问答系统</p>
+      <p class="footer-text">© 2026 实验室安全智能问答系统</p>
     </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, provide } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const currentUser = ref(null)
+
+const loadUser = () => {
+  const userStr = localStorage.getItem('user')
+  if (userStr) {
+    try {
+      currentUser.value = JSON.parse(userStr)
+    } catch (e) {
+      localStorage.removeItem('user')
+      currentUser.value = null
+    }
+  } else {
+    currentUser.value = null
+  }
+}
+
+provide('loadUser', loadUser)
 
 const handleLogout = () => {
   localStorage.removeItem('user')
@@ -68,16 +84,7 @@ const handleLogout = () => {
   router.push('/login')
 }
 
-onMounted(() => {
-  const userStr = localStorage.getItem('user')
-  if (userStr) {
-    try {
-      currentUser.value = JSON.parse(userStr)
-    } catch (e) {
-      localStorage.removeItem('user')
-    }
-  }
-})
+onMounted(loadUser)
 </script>
 
 <style>

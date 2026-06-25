@@ -67,12 +67,13 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, inject } from 'vue'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const loadUser = inject('loadUser')
 const loginForm = ref({
   username: '',
   password: ''
@@ -90,6 +91,7 @@ const handleLogin = async () => {
   try {
     const res = await axios.post('/api/user/login', loginForm.value)
     localStorage.setItem('user', JSON.stringify(res.data.user))
+    loadUser()
     ElMessage.success('登录成功')
     router.push('/')
   } catch (err) {
