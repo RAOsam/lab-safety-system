@@ -142,7 +142,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=question.user_id,
+            user_id=question.user_id if question.user_id is not None else 1,
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -160,7 +160,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=question.user_id,
+            user_id=question.user_id if question.user_id is not None else 1,
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -201,7 +201,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
 
     # 6. 保存到数据库
     record = QARecord(
-        user_id=question.user_id,
+        user_id=question.user_id if question.user_id is not None else 1,
         question=question.question,
         answer=answer,
         risk_level=risk

@@ -21,7 +21,7 @@
           placeholder="描述实验室安全隐患，例如：浓硫酸溅到桌面怎么办？"
           :rows="3"
           resize="none"
-          @keydown.ctrl.enter="sendQuestion"
+          @keydown.enter="sendQuestion"
         />
         <el-button type="primary" @click="sendQuestion" :loading="loading" style="margin-top: 10px;">
           发送
@@ -64,7 +64,7 @@ const sendQuestion = async () => {
   await scrollToBottom()
 
   try {
-    const res = await axios.post('/api/qa/ask', { question })
+    const res = await axios.post('/api/qa/ask', { question: question })
     messages.value.push({ role: 'assistant', content: res.data.answer })
   } catch (err) {
     console.error(err)

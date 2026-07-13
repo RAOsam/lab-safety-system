@@ -23,7 +23,7 @@ class User(Base):
     # 关系
     qa_records = relationship("QARecord", back_populates="user")
     inspection_records = relationship("InspectionRecord", back_populates="inspector_user")
-    feedbacks = relationship("Feedback", back_populates="user")
+    feedbacks = relationship("Feedback", back_populates="user", foreign_keys="Feedback.user_id")
 
 class QARecord(Base):
     __tablename__ = "qa_records"
@@ -32,9 +32,6 @@ class QARecord(Base):
     question = Column(Text, nullable=False)
     answer = Column(Text)
     risk_level = Column(String(20))
-    hazard_type = Column(String(100))
-    disposal_steps = Column(Text)
-    prevention_measures = Column(Text)
     created_at = Column(DateTime, server_default=func.now())
     
     # 关系
