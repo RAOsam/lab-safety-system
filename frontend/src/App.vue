@@ -79,6 +79,8 @@ provide('loadUser', loadUser)
 
 const handleLogout = () => {
   localStorage.removeItem('user')
+  localStorage.removeItem('access_token')
+  delete axios.defaults.headers.common['Authorization']
   currentUser.value = null
   ElMessage.success('已退出登录')
   router.push('/login')

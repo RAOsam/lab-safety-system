@@ -90,7 +90,14 @@ const handleLogin = async () => {
   loading.value = true
   try {
     const res = await axios.post('/api/user/login', loginForm.value)
+    
+    // 保存JWT token和用户信息
+    localStorage.setItem('access_token', res.data.access_token)
     localStorage.setItem('user', JSON.stringify(res.data.user))
+    
+    // 设置axios默认headers
+    axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.access_token}`
+    
     loadUser()
     ElMessage.success('登录成功')
     router.push('/')

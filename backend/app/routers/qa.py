@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ..database import SessionLocal
 from ..models import QARecord
 from ..rag_engine import rag
 from ..llm_client import ApiClient
+from ..auth import get_current_user
+import json
 
 router = APIRouter(prefix="/api/qa", tags=["问答"])
 
@@ -129,7 +132,7 @@ def clean_answer(answer: str) -> str:
     return '\n'.join(cleaned_lines)
 
 @router.post("/ask")
-def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
+def ask(question: Question, current_user: dict = Depends(get_current_user), db: Session = Depends(lambda: SessionLocal())):
     print(f"收到问答请求: {question.question}")
     
     # 判断是否是打招呼或闲聊
@@ -139,7 +142,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=question.user_id,
+            user_id=current_user["user_id"],
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -157,7 +160,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=question.user_id,
+            user_id=current_user["user_id"],
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -198,7 +201,7 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
 
     # 6. 保存到数据库
     record = QARecord(
-        user_id=question.user_id,
+        user_id=current_user["user_id"],
         question=question.question,
         answer=answer,
         risk_level=risk
@@ -208,3 +211,91 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     db.refresh(record)
 
     return {"answer": answer, "risk_level": risk}
+
+def generate_stream_response(prompt: str):
+    """生成流式响应"""
+    try:
+        import requests
+        from ..config import API_BASE_URL, API_KEY
+        
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}"
+        }
+        
+        data = {
+            "model": "Qwen/Qwen2-7B-Instruct",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 512,
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "stream": True
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/chat/completions",
+            headers=headers,
+            json=data,
+            stream=True,
+            timeout=120
+        )
+        
+        for line in response.iter_lines():
+            if line:
+                line = line.decode('utf-8')
+                if line.startswith('data: '):
+                    data_str = line[6:]  # 移除 'data: ' 前缀
+                    if data_str == '[DONE]':
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                        if 'choices' in chunk and len(chunk['choices']) > 0:
+                            delta = chunk['choices'][0].get('delta', {})
+                            content = delta.get('content', '')
+                            if content:
+                                # SSE格式：data: JSON内容
+                                yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
+                    except json.JSONDecodeError:
+                        continue
+                        
+    except Exception as e:
+        print(f"流式响应生成失败: {e}")
+        yield f"data: {json.dumps({'content': '抱歉，服务暂时不可用。'}, ensure_ascii=False)}\n\n"
+
+@router.post("/ask/stream")
+def ask_stream(question: Question, current_user: dict = Depends(get_current_user), db: Session = Depends(lambda: SessionLocal())):
+    """流式问答接口"""
+    print(f"收到流式问答请求: {question.question}")
+    
+    # 判断是否是打招呼或闲聊
+    if is_greeting(question.question):
+        prompt = CHAT_PROMPT_TEMPLATE.format(question=question.question)
+    elif not is_safety_related(question.question):
+        prompt = CHAT_PROMPT_TEMPLATE.format(question=question.question)
+    else:
+        # 安全相关问题，使用RAG流程
+        docs = rag.retrieve(question.question, top_k=5)
+        context = "\n\n".join(docs) if docs else "无相关参考资料。"
+        prompt = PROMPT_TEMPLATE.format(context=context, question=question.question)
+    
+    # 保存问答记录（空答案，后续会更新）
+    record = QARecord(
+        user_id=current_user["user_id"],
+        question=question.question,
+        answer="",
+        risk_level="待分析"
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    
+    # 返回流式响应
+    return StreamingResponse(
+        generate_stream_response(prompt),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

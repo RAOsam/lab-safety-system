@@ -7,10 +7,10 @@ from chromadb.config import Settings
 from .config import CHROMA_PERSIST_DIR
 
 class SentenceTransformerEmbedding:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "BAAI/bge-large-zh-v1.5"):
         self.model_name = model_name
         self.model = None
-        self.dimensions = 384
+        self.dimensions = 1024  # BGE-large-zh的向量维度
     
     def load_model(self):
         try:
