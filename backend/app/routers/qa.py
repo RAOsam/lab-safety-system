@@ -15,21 +15,30 @@ class Question(BaseModel):
     user_id: int = None
     question: str
 
-PROMPT_TEMPLATE = """你是一位实验室安全专家。请根据以下参考资料回答用户问题，并严格按照格式输出。
+# 安全相关问题提示词模板 - 严肃严谨版本
+SERIOUS_SAFETY_PROMPT_TEMPLATE = """你是一位专业的实验室安全专家。请根据以下参考资料回答用户问题。
 
 参考资料：
 {context}
 
 用户问题：{question}
 
-请严格按照以下格式输出，不要添加任何额外内容：
+请严格按照以下格式回答：
+
 隐患类型：
 风险等级：
 处置步骤：
 预防建议：
 
-确保每个部分都有内容，不要重复标题。"""
+要求：
+1. 使用专业术语
+2. 避免口语化表达
+3. 提供具体的安全指导
+4. 不要使用比喻或拟人化表达
+5. 不要使用感叹号和表情符号
+"""
 
+# 闲聊提示词模板
 CHAT_PROMPT_TEMPLATE = """你是一位友好的实验室安全助手。用户现在说："{question}"
 
 如果这是打招呼、闲聊或与实验室安全无关的问题，请用自然、友好的语言回复。
@@ -40,7 +49,14 @@ CHAT_PROMPT_TEMPLATE = """你是一位友好的实验室安全助手。用户现
 预防建议：xxx
 """
 
-GREETING_KEYWORDS = ["你好", "您好", "嗨", "Hello", "Hi", "早上好", "下午好", "晚上好", "拜拜", "再见", "谢谢", "感谢", "你是谁", "介绍一下"]
+# 优化的关键词检测
+GREETING_KEYWORDS = ["你好", "您好", "嗨", "Hello", "Hi", "早上好", "下午好", "晚上好", "拜拜", "再见", "谢谢", "感谢", "你是谁", "介绍一下", "请问", "想问"]
+
+# 安全关键词列表
+SAFETY_KEYWORDS = ["安全", "隐患", "风险", "危险", "泄漏", "火灾", "爆炸", "中毒", "腐蚀", "防护", "应急", "事故", "急救", "泄漏处理", "安全操作", "防护措施", "安全规程"]
+
+# 设备相关关键词
+EQUIPMENT_KEYWORDS = ["设备", "仪器", "仪器使用", "操作", "使用方法", "注意事项", "维护", "保养", "校准", "调试"]
 
 def is_greeting(question: str) -> bool:
     """判断是否是打招呼或闲聊"""
@@ -51,11 +67,19 @@ def is_greeting(question: str) -> bool:
     return False
 
 def is_safety_related(question: str) -> bool:
-    """简单判断是否与实验室安全相关"""
-    safety_keywords = ["安全", "隐患", "风险", "危险", "实验", "试剂", "化学品", "防护", "操作", "处理", "储存", "泄漏", "火灾", "爆炸", "中毒", "腐蚀", "实验台", "通风橱", "气瓶", "废液"]
-    for keyword in safety_keywords:
-        if keyword in question:
+    """判断是否与实验室安全相关"""
+    question_lower = question.lower()
+    
+    # 如果包含明显的危险词汇，认为是安全问题
+    for keyword in SAFETY_KEYWORDS:
+        if keyword in question_lower:
             return True
+    
+    # 如果包含设备操作相关词汇，也认为是安全问题
+    for keyword in EQUIPMENT_KEYWORDS:
+        if keyword in question_lower:
+            return True
+    
     return False
 
 def clean_answer(answer: str) -> str:
@@ -177,8 +201,8 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     context = "\n\n".join(docs) if docs else "无相关参考资料。"
     print(f"检索到 {len(docs)} 条相关知识")
 
-    # 2. 构造提示词
-    prompt = PROMPT_TEMPLATE.format(context=context, question=question.question)
+    # 2. 构造提示词 - 使用严肃严谨的版本
+    prompt = SERIOUS_SAFETY_PROMPT_TEMPLATE.format(question=question.question, context=context)
     print(f"提示词长度: {len(prompt)}")
 
     # 3. 调用大模型生成回答
@@ -276,7 +300,7 @@ def ask_stream(question: Question, current_user: dict = Depends(get_current_user
         # 安全相关问题，使用RAG流程
         docs = rag.retrieve(question.question, top_k=5)
         context = "\n\n".join(docs) if docs else "无相关参考资料。"
-        prompt = PROMPT_TEMPLATE.format(context=context, question=question.question)
+        prompt = SERIOUS_SAFETY_PROMPT_TEMPLATE.format(question=question.question, context=context)
     
     # 保存问答记录（空答案，后续会更新）
     record = QARecord(

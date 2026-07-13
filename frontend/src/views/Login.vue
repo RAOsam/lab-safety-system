@@ -1,94 +1,106 @@
 <template>
   <div class="login-page">
-    <div class="login-wrapper">
-      <div class="login-content">
-        <div class="logo-section">
-          <div class="logo-icon">🔬</div>
-          <h1 class="logo-title">实验室安全系统</h1>
-          <p class="logo-subtitle">保障安全，守护科研</p>
-        </div>
-        
-        <el-card class="login-card">
-          <template #header>
-            <div class="card-header">
-              <span class="header-icon">🔐</span>
-              <span class="header-title">用户登录</span>
-            </div>
-          </template>
+    <!-- 主容器 -->
+    <div class="login-container">
+      <!-- 登录区域 -->
+      <div class="login-section">
+        <div class="login-card">
+          <div class="login-header">
+            <h2 class="login-title">安全登录</h2>
+            <p class="login-desc">请使用您的账户信息登录系统</p>
+          </div>
           
-          <el-form :model="loginForm" ref="loginFormRef" class="login-form">
-            <el-form-item prop="username" class="form-item">
-              <el-input 
-                v-model="loginForm.username" 
+          <el-form 
+            ref="loginFormRef" 
+            :model="loginForm" 
+            :rules="rules"
+            class="login-form"
+            @keyup.enter="handleLogin"
+          >
+            <div class="form-group">
+              <label class="form-label">用户名</label>
+              <el-input
+                v-model="loginForm.username"
                 placeholder="请输入用户名"
-                class="input-field"
+                class="form-input"
                 prefix-icon="User"
+                size="large"
+                clearable
               />
-            </el-form-item>
+            </div>
             
-            <el-form-item prop="password" class="form-item">
-              <el-input 
-                v-model="loginForm.password" 
-                type="password" 
+            <div class="form-group">
+              <label class="form-label">密码</label>
+              <el-input
+                v-model="loginForm.password"
+                type="password"
                 placeholder="请输入密码"
-                class="input-field"
+                class="form-input"
                 prefix-icon="Lock"
+                size="large"
+                show-password
+                clearable
+                @keyup.enter="handleLogin"
               />
-            </el-form-item>
+            </div>
             
-            <el-form-item class="form-item">
+            <div class="form-actions">
               <el-button 
                 type="primary" 
                 @click="handleLogin" 
-                :loading="loading" 
+                :loading="loading"
                 class="login-btn"
+                size="large"
               >
-                <span class="btn-text">登 录</span>
+                登 录
               </el-button>
-            </el-form-item>
-            
-            <div class="register-link">
-              <span>还没有账号？</span>
-              <el-link @click="goToRegister" type="primary" class="link-btn">立即注册</el-link>
+              
+              <div class="form-links">
+                <router-link to="/register" class="register-link">
+                  还没有账号？立即注册
+                </router-link>
+              </div>
             </div>
           </el-form>
-        </el-card>
-      </div>
-      
-      <div class="login-decoration">
-        <div class="deco-circle deco-circle-1"></div>
-        <div class="deco-circle deco-circle-2"></div>
-        <div class="deco-circle deco-circle-3"></div>
-        <div class="deco-shape deco-shape-1"></div>
-        <div class="deco-shape deco-shape-2"></div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const loadUser = inject('loadUser')
+const loginFormRef = ref(null)
 const loginForm = ref({
   username: '',
   password: ''
 })
 const loading = ref(false)
-const loginFormRef = ref(null)
+
+// 表单验证规则
+const rules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { min: 3, max: 20, message: '用户名长度应在3-20个字符之间', trigger: 'blur' }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 20, message: '密码长度应在6-20个字符之间', trigger: 'blur' }
+  ]
+}
 
 const handleLogin = async () => {
-  if (!loginForm.value.username || !loginForm.value.password) {
-    ElMessage.warning('请填写用户名和密码')
-    return
-  }
+  if (!loginFormRef.value) return
   
-  loading.value = true
   try {
+    await loginFormRef.value.validate()
+    loading.value = true
+    
     const res = await axios.post('/api/user/login', loginForm.value)
     
     // 保存JWT token和用户信息
@@ -98,214 +110,153 @@ const handleLogin = async () => {
     // 设置axios默认headers
     axios.defaults.headers.common['Authorization'] = `Bearer ${res.data.access_token}`
     
-    loadUser()
-    ElMessage.success('登录成功')
+    ElMessage.success('登录成功，正在跳转...')
     router.push('/')
   } catch (err) {
-    ElMessage.error(err.response?.data?.detail || '登录失败')
+    console.error('登录错误:', err)
+    if (err.response?.data?.detail) {
+      ElMessage.error(err.response.data.detail)
+    } else if (err.message) {
+      ElMessage.error(err.message)
+    } else {
+      ElMessage.error('登录失败，请检查网络连接')
+    }
   } finally {
     loading.value = false
   }
-}
-
-const goToRegister = () => {
-  router.push('/register')
 }
 </script>
 
 <style scoped>
 .login-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: #f5f7fa;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  position: relative;
-  overflow: hidden;
 }
 
-.login-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.login-container {
   width: 100%;
-  max-width: 900px;
-  position: relative;
-  z-index: 1;
+  max-width: 400px;
 }
 
-.login-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.logo-section {
-  text-align: center;
-  margin-bottom: 30px;
-}
-
-.logo-icon {
-  font-size: 64px;
-  margin-bottom: 16px;
-}
-
-.logo-title {
-  font-size: 32px;
-  font-weight: 700;
-  color: #fff;
-  margin: 0 0 8px 0;
-  text-shadow: 0 2px 10px rgba(0,0,0,0.2);
-}
-
-.logo-subtitle {
-  font-size: 16px;
-  color: rgba(255,255,255,0.8);
-  margin: 0;
+.login-section {
+  width: 100%;
 }
 
 .login-card {
-  width: 100%;
-  max-width: 400px;
-  background: rgba(255,255,255,0.95);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-  border: none;
-  overflow: hidden;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  padding: 40px;
+  border: 1px solid #e9ecef;
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+.login-header {
+  text-align: center;
+  margin-bottom: 32px;
 }
 
-.header-icon {
+.login-title {
   font-size: 24px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
 }
 
-.header-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: #333;
+.login-desc {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
 }
 
 .login-form {
-  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.form-item {
-  margin-bottom: 20px;
+.form-group {
+  display: flex;
+  flex-direction: column;
 }
 
-.input-field {
-  height: 48px;
-  border-radius: 12px;
-  font-size: 15px;
-  background: #f8f9fa;
-  border: 2px solid #e9ecef;
+.form-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.form-input {
+  height: 44px;
+  border-radius: 4px;
+  font-size: 14px;
+  border: 1px solid #dcdfe6;
+  background: #fff;
   transition: all 0.3s ease;
 }
 
-.input-field:focus {
-  border-color: #667eea;
+.form-input:focus {
+  border-color: #2c3e50;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+}
+
+.form-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .login-btn {
   width: 100%;
-  height: 50px;
-  border-radius: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  height: 44px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  background: #2c3e50;
   border: none;
-  box-shadow: 0 4px 15px rgba(102,126,234,0.4);
   transition: all 0.3s ease;
 }
 
 .login-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102,126,234,0.5);
+  background: #34495e;
 }
 
-.btn-text {
-  letter-spacing: 4px;
+.login-btn:disabled {
+  opacity: 0.7;
+}
+
+.form-links {
+  text-align: center;
 }
 
 .register-link {
-  text-align: center;
-  margin-top: 10px;
-  color: #666;
+  color: #2c3e50;
+  text-decoration: none;
   font-size: 14px;
+  transition: all 0.3s ease;
 }
 
-.link-btn {
-  margin-left: 8px;
-  font-weight: 500;
+.register-link:hover {
+  color: #1a252f;
+  text-decoration: underline;
 }
 
-.login-decoration {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 50%;
-  pointer-events: none;
-}
-
-.deco-circle {
-  position: absolute;
-  border-radius: 50%;
-  opacity: 0.15;
-}
-
-.deco-circle-1 {
-  width: 300px;
-  height: 300px;
-  background: #fff;
-  top: -100px;
-  right: -50px;
-}
-
-.deco-circle-2 {
-  width: 200px;
-  height: 200px;
-  background: #fff;
-  bottom: 50px;
-  right: 100px;
-}
-
-.deco-circle-3 {
-  width: 150px;
-  height: 150px;
-  background: #fff;
-  top: 50%;
-  right: -30px;
-}
-
-.deco-shape {
-  position: absolute;
-  background: rgba(255,255,255,0.1);
-  border-radius: 20px;
-}
-
-.deco-shape-1 {
-  width: 100px;
-  height: 100px;
-  top: 20%;
-  right: 150px;
-  transform: rotate(45deg);
-}
-
-.deco-shape-2 {
-  width: 60px;
-  height: 60px;
-  bottom: 30%;
-  right: 50px;
-  transform: rotate(15deg);
+/* 响应式设计 */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 24px;
+  }
+  
+  .login-title {
+    font-size: 20px;
+  }
+  
+  .form-input {
+    height: 40px;
+  }
 }
 </style>

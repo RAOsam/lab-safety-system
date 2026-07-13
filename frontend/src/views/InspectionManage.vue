@@ -1,157 +1,544 @@
 <template>
-  <div>
-    <el-card>
-      <template #header><span style="font-weight: bold; font-size: 18px;">📋 新增检查记录</span></template>
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-row :gutter="20">
-          <el-col :span="12"><el-form-item label="位置"><el-input v-model="form.location" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="检查人"><el-input v-model="form.inspector" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="隐患描述"><el-input type="textarea" v-model="form.hazard_description" :rows="2" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="风险等级"><el-select v-model="form.risk_level"><el-option label="高" value="高"/><el-option label="中" value="中"/><el-option label="低" value="低"/></el-select></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="责任人"><el-input v-model="form.responsible_person" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="整改期限"><el-date-picker type="date" v-model="form.deadline" value-format="YYYY-MM-DD" /></el-form-item></el-col>
-          <el-col :span="24"><el-form-item><el-button type="primary" @click="createRecord">提交</el-button></el-form-item></el-col>
-        </el-row>
-      </el-form>
-    </el-card>
+  <div class="inspection-manage-container">
+    <div class="inspection-manage-content">
+      <div class="manage-header">
+        <h1 class="manage-title">检查管理</h1>
+        <p class="manage-desc">记录和管理安全隐患检查</p>
+      </div>
 
-    <el-card style="margin-top: 20px;">
-      <template #header><span style="font-weight: bold; font-size: 18px;">📋 检查记录列表</span></template>
-      <el-table :data="records" stripe style="width: 100%;" max-height="400" :loading="loading">
-        <el-table-column prop="location" label="位置" width="120" />
-        <el-table-column prop="inspector" label="检查人" width="100" />
-        <el-table-column prop="hazard_description" label="隐患描述" show-overflow-tooltip />
-        <el-table-column prop="risk_level" label="风险等级" width="80" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === '已整改' ? 'success' : 'danger'">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="responsible_person" label="责任人" width="80" />
-        <el-table-column prop="deadline" label="整改期限" width="150" :formatter="formatDeadline" />
-        <el-table-column label="操作" width="180" fixed="right">
-          <template #default="{ row }">
-              <el-button size="small" type="success" icon="Check" @click="markCompleted(row.id)" :disabled="row.status === '已整改'">完成</el-button>
-              <el-button size="small" type="danger" icon="Delete" @click="deleteRecord(row.id)">删除</el-button>
-            </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <div class="main-layout">
+        <!-- 左侧表单区域 -->
+        <div class="form-section">
+          <div class="form-card">
+            <h2 class="form-title">添加检查记录</h2>
+            <el-form 
+              ref="inspectionFormRef" 
+              :model="inspectionForm" 
+              :rules="rules"
+              label-width="100px"
+              class="inspection-form"
+            >
+              <el-form-item label="隐患描述" prop="description">
+                <el-input
+                  v-model="inspectionForm.description"
+                  placeholder="请描述发现的隐患"
+                  type="textarea"
+                  :rows="4"
+                />
+              </el-form-item>
+
+              <el-form-item label="发现地点" prop="location">
+                <el-input
+                  v-model="inspectionForm.location"
+                  placeholder="请输入发现地点"
+                />
+              </el-form-item>
+
+              <el-form-item label="隐患等级" prop="level">
+                <el-select
+                  v-model="inspectionForm.level"
+                  placeholder="请选择隐患等级"
+                  style="width: 100%"
+                >
+                  <el-option label="低" value="low" />
+                  <el-option label="中" value="medium" />
+                  <el-option label="高" value="high" />
+                </el-select>
+              </el-form-item>
+
+              <el-form-item label="发现时间" prop="discovery_time">
+                <el-date-picker
+                  v-model="inspectionForm.discovery_time"
+                  type="datetime"
+                  placeholder="选择发现时间"
+                  style="width: 100%"
+                />
+              </el-form-item>
+
+              <el-form-item label="负责人" prop="responsible_person">
+                <el-input
+                  v-model="inspectionForm.responsible_person"
+                  placeholder="请输入负责人姓名"
+                />
+              </el-form-item>
+
+              <el-form-item label="截止日期" prop="deadline">
+                <el-date-picker
+                  v-model="inspectionForm.deadline"
+                  type="date"
+                  placeholder="选择整改截止日期"
+                  style="width: 100%"
+                />
+              </el-form-item>
+
+              <el-form-item>
+                <el-button 
+                  type="primary" 
+                  @click="submitInspection" 
+                  :loading="submitting"
+                  style="width: 100%"
+                >
+                  提交记录
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+        </div>
+
+        <!-- 右侧列表区域 -->
+        <div class="list-section">
+          <div class="list-card">
+            <div class="list-header">
+              <h2 class="list-title">检查记录列表</h2>
+              <div class="stats-info">
+                <span class="stat-item">总数: {{ inspections.length }}</span>
+                <span class="stat-item">待处理: {{ pendingCount }}</span>
+                <span class="stat-item">已完成: {{ completedCount }}</span>
+              </div>
+            </div>
+
+            <div class="inspections-list">
+              <div v-if="loadingList" class="loading-state">
+                <p>加载中...</p>
+              </div>
+              <div v-else-if="inspections.length === 0" class="empty-state">
+                <p>暂无检查记录</p>
+              </div>
+              <div v-else class="list-content">
+                <div 
+                  v-for="item in inspections" 
+                  :key="item.id" 
+                  class="inspection-item"
+                  :class="getLevelClass(item.level)"
+                >
+                  <div class="item-header">
+                    <span class="item-level">{{ getLevelText(item.level) }}</span>
+                    <span class="item-status">{{ getStatusText(item.status) }}</span>
+                  </div>
+                  <div class="item-description">{{ item.description }}</div>
+                  <div class="item-info">
+                    <span>地点: {{ item.location }}</span>
+                    <span>时间: {{ formatDate(item.discovery_time) }}</span>
+                  </div>
+                  <div class="item-actions">
+                    <el-button 
+                      size="small" 
+                      type="primary" 
+                      @click="handleComplete(item)"
+                      v-if="item.status === 'pending'"
+                    >
+                      标记完成
+                    </el-button>
+                    <el-button 
+                      size="small" 
+                      type="danger" 
+                      @click="handleDelete(item)"
+                    >
+                      删除
+                    </el-button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, reactive } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-// 表单验证规则
-const rules = {
-  location: [{ required: true, message: '请填写位置', trigger: 'blur' }],
-  inspector: [{ required: true, message: '请填写检查人', trigger: 'blur' }],
-  hazard_description: [{ required: true, message: '请填写隐患描述', trigger: 'blur' }],
-  risk_level: [{ required: true, message: '请选择风险等级', trigger: 'change' }],
-  responsible_person: [{ required: true, message: '请填写责任人', trigger: 'blur' }],
-  deadline: [{ required: true, message: '请选择整改期限', trigger: 'change' }]
-}
-
-const form = reactive({
+const inspectionFormRef = ref(null)
+const inspectionForm = ref({
+  description: '',
   location: '',
-  inspector: '',
-  hazard_description: '',
-  risk_level: '中',
+  level: 'medium',
+  discovery_time: new Date(),
   responsible_person: '',
-  deadline: ''
+  deadline: null
 })
-const records = ref([])
-const loading = ref(false)
-const formRef = ref(null)
+const submitting = ref(false)
+const loadingList = ref(false)
+const inspections = ref([])
 
-const fetchRecords = async () => {
-  loading.value = true
-  try {
-    const res = await axios.get('/api/inspection/list')
-    records.value = res.data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  } catch (err) {
-    console.error(err)
-    ElMessage.error('获取数据失败')
-  } finally {
-    loading.value = false
-  }
+const rules = {
+  description: [
+    { required: true, message: '请描述发现的隐患', trigger: 'blur' }
+  ],
+  location: [
+    { required: true, message: '请输入发现地点', trigger: 'blur' }
+  ],
+  level: [
+    { required: true, message: '请选择隐患等级', trigger: 'change' }
+  ],
+  discovery_time: [
+    { required: true, message: '请选择发现时间', trigger: 'change' }
+  ],
+  responsible_person: [
+    { required: true, message: '请输入负责人姓名', trigger: 'blur' }
+  ],
+  deadline: [
+    { required: true, message: '请选择整改截止日期', trigger: 'change' }
+  ]
 }
 
-const createRecord = async () => {
-  // 表单验证
-  await formRef.value.validate()
-  
+const pendingCount = computed(() => 
+  inspections.value.filter(item => item.status === 'pending').length
+)
+
+const completedCount = computed(() => 
+  inspections.value.filter(item => item.status === 'completed').length
+)
+
+const submitInspection = async () => {
+  if (!inspectionFormRef.value) return
+
   try {
-    await axios.post('/api/inspection/create', form)
+    await inspectionFormRef.value.validate()
+    submitting.value = true
+
+    const res = await axios.post('/api/inspections', inspectionForm.value)
+    
+    inspections.value.unshift(res.data)
     ElMessage.success('添加成功')
+    
     // 重置表单
-    formRef.value.resetFields()
-    fetchRecords()
-  } catch (err) {
-    ElMessage.error('添加失败：' + (err.response?.data?.message || err.message))
+    inspectionForm.value = {
+      description: '',
+      location: '',
+      level: 'medium',
+      discovery_time: new Date(),
+      responsible_person: '',
+      deadline: null
+    }
+  } catch (error) {
+    console.error('提交失败:', error)
+    ElMessage.error('提交失败，请重试')
+  } finally {
+    submitting.value = false
   }
 }
 
-const markCompleted = async (id) => {
+const loadInspections = async () => {
+  loadingList.value = true
   try {
-    await ElMessageBox.confirm(
-      '确定要标记为已完成吗？',
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+    const res = await axios.get('/api/inspections')
+    inspections.value = res.data
+  } catch (error) {
+    console.error('加载失败:', error)
+    ElMessage.error('加载失败，请重试')
+  } finally {
+    loadingList.value = false
+  }
+}
+
+const handleComplete = async (item) => {
+  try {
+    await ElMessageBox.confirm('确认标记为已完成？', '提示', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'info'
+    })
+
+    await axios.put(`/api/inspections/${item.id}`, {
+      status: 'completed'
+    })
+
+    const index = inspections.value.findIndex(i => i.id === item.id)
+    if (index !== -1) {
+      inspections.value[index].status = 'completed'
+    }
     
-    await axios.put(`/api/inspection/${id}`, { status: '已整改', completed_at: new Date().toISOString() })
-    ElMessage.success('已标记完成')
-    fetchRecords()
-  } catch (err) {
-    if (err !== 'cancel') {
-      ElMessage.error('操作失败：' + (err.response?.data?.message || err.message))
+    ElMessage.success('已标记为完成')
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('操作失败:', error)
+      ElMessage.error('操作失败，请重试')
     }
   }
 }
 
-const deleteRecord = async (id) => {
+const handleDelete = async (item) => {
   try {
-    await ElMessageBox.confirm(
-      '确定要删除这条记录吗？此操作不可恢复。',
-      '警告',
-      {
-        confirmButtonText: '确定删除',
-        cancelButtonText: '取消',
-        type: 'error'
-      }
-    )
+    await ElMessageBox.confirm('确认删除此记录？', '警告', {
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+
+    await axios.delete(`/api/inspections/${item.id}`)
     
-    await axios.delete(`/api/inspection/${id}`)
+    inspections.value = inspections.value.filter(i => i.id !== item.id)
     ElMessage.success('删除成功')
-    fetchRecords()
-  } catch (err) {
-    if (err !== 'cancel') {
-      ElMessage.error('删除失败：' + (err.response?.data?.message || err.message))
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除失败:', error)
+      ElMessage.error('删除失败，请重试')
     }
   }
 }
 
-const formatDeadline = (row) => {
-  const now = new Date()
-  const deadline = new Date(row.deadline)
-  
-  if (row.status === '已整改') return row.deadline
-  
-  if (deadline < now) {
-    return `<span style='color: #f56c6c; font-weight: bold;'>${row.deadline} (已逾期)</span>`
-  } else if (deadline - now < 3 * 24 * 60 * 60 * 1000) {
-    return `<span style='color: #e6a23c;'>${row.deadline} (即将到期)</span>`
+const getLevelText = (level) => {
+  const map = {
+    low: '低',
+    medium: '中',
+    high: '高'
   }
-  return row.deadline
+  return map[level] || level
 }
 
-onMounted(fetchRecords)
+const getStatusText = (status) => {
+  const map = {
+    pending: '待处理',
+    completed: '已完成'
+  }
+  return map[status] || status
+}
+
+const getLevelClass = (level) => {
+  return `level-${level}`
+}
+
+const formatDate = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN')
+}
+
+onMounted(() => {
+  loadInspections()
+})
 </script>
+
+<style scoped>
+.inspection-manage-container {
+  min-height: calc(100vh - 140px);
+  background: #f5f7fa;
+  padding: 20px;
+}
+
+.inspection-manage-content {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.manage-header {
+  margin-bottom: 24px;
+}
+
+.manage-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+}
+
+.manage-desc {
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.form-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e9ecef;
+  padding: 24px;
+}
+
+.form-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.inspection-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.list-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.list-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e9ecef;
+  padding: 24px;
+  max-height: calc(100vh - 200px);
+  display: flex;
+  flex-direction: column;
+}
+
+.list-header {
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.list-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 12px 0;
+}
+
+.stats-info {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #666;
+}
+
+.stat-item {
+  padding: 4px 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+}
+
+.inspections-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 40px;
+  color: #999;
+}
+
+.list-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inspection-item {
+  background: #f5f7fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+  padding: 16px;
+  transition: all 0.3s ease;
+}
+
+.inspection-item:hover {
+  border-color: #2c3e50;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.item-level {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.level-low .item-level {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.level-medium .item-level {
+  background: #fff3e0;
+  color: #ef6c00;
+}
+
+.level-high .item-level {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.item-status {
+  font-size: 12px;
+  color: #666;
+}
+
+.item-description {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.item-info {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 12px;
+  display: flex;
+  gap: 16px;
+}
+
+.item-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .main-layout {
+    grid-template-columns: 1fr;
+  }
+  
+  .list-card {
+    max-height: 500px;
+  }
+}
+
+@media (max-width: 768px) {
+  .inspection-manage-container {
+    padding: 10px;
+  }
+  
+  .manage-title {
+    font-size: 20px;
+  }
+  
+  .form-card,
+  .list-card {
+    padding: 16px;
+  }
+  
+  .item-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .item-info {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+</style>
