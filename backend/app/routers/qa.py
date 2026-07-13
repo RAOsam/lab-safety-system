@@ -132,7 +132,7 @@ def clean_answer(answer: str) -> str:
     return '\n'.join(cleaned_lines)
 
 @router.post("/ask")
-def ask(question: Question, current_user: dict = Depends(get_current_user), db: Session = Depends(lambda: SessionLocal())):
+def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     print(f"收到问答请求: {question.question}")
     
     # 判断是否是打招呼或闲聊
@@ -142,7 +142,7 @@ def ask(question: Question, current_user: dict = Depends(get_current_user), db: 
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=current_user["user_id"],
+            user_id=question.user_id,
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -160,7 +160,7 @@ def ask(question: Question, current_user: dict = Depends(get_current_user), db: 
         answer = llm_client.generate(CHAT_PROMPT_TEMPLATE.format(question=question.question))
         
         record = QARecord(
-            user_id=current_user["user_id"],
+            user_id=question.user_id,
             question=question.question,
             answer=answer,
             risk_level="无"
@@ -201,7 +201,7 @@ def ask(question: Question, current_user: dict = Depends(get_current_user), db: 
 
     # 6. 保存到数据库
     record = QARecord(
-        user_id=current_user["user_id"],
+        user_id=question.user_id,
         question=question.question,
         answer=answer,
         risk_level=risk
