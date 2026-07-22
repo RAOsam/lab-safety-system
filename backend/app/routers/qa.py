@@ -83,7 +83,7 @@ def is_safety_related(question: str) -> bool:
     return False
 
 def clean_answer(answer: str) -> str:
-    """清理回答，移除不相关内容和重复标题"""
+    """清理回答，移除不相关内容和重复标题，保留格式"""
     # 移除YOLO检测结果（如surfboard、chair等）
     yolo_classes = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 
                     'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
@@ -153,7 +153,253 @@ def clean_answer(answer: str) -> str:
             # 普通内容行
             cleaned_lines.append(line)
     
-    return '\n'.join(cleaned_lines)
+    # 确保回答格式正确，如果缺少标题则添加
+    result = '\n'.join(cleaned_lines)
+    
+    # 检查是否包含所有必要的标题
+    required_sections = ['隐患类型：', '风险等级：', '处置步骤：', '预防建议：']
+    missing_sections = [section for section in required_sections if section not in result]
+    
+    # 如果缺少标题，尝试从内容中提取并添加
+    if missing_sections and '隐患类型' in result.lower():
+        lines = result.split('\n')
+        new_lines = []
+        
+        for line in lines:
+            new_lines.append(line)
+            
+            # 如果当前行是某个标题，检查是否需要添加缺失的标题
+            if any(line.strip().startswith(section[:-1]) for section in required_sections):
+                for missing in missing_sections:
+                    if missing not in new_lines:
+                        new_lines.append(missing)
+                        break
+        
+        result = '\n'.join(new_lines)
+    
+    # 确保JSON序列化时保留换行符
+    # 使用双换行符来分隔不同的部分
+    result = result.replace('\n处置步骤：', '\n\n处置步骤：')
+    result = result.replace('\n预防建议：', '\n\n预防建议：')
+    result = result.replace('\n隐患类型：', '\n\n隐患类型：')
+    result = result.replace('\n风险等级：', '\n\n风险等级：')
+    
+    # 处理处置步骤的编号格式
+    if '处置步骤：' in result:
+        # 确保处置步骤编号格式正确
+        result = result.replace('处置步骤：', '处置步骤：\n')
+        
+        # 处理处置步骤内容，确保每个步骤都有换行
+        lines = result.split('\n')
+        new_lines = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            new_lines.append(line)
+            
+            # 如果是处置步骤标题，处理后续的步骤
+            if '处置步骤：' in line:
+                j = i + 1
+                steps = []
+                
+                # 收集所有步骤
+                while j < len(lines):
+                    next_line = lines[j]
+                    
+                    # 如果遇到下一个标题，停止收集
+                    if any(next_line.strip().startswith(section) for section in required_sections):
+                        break
+                    
+                    # 如果是步骤编号，添加到步骤列表
+                    if next_line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
+                        steps.append(next_line)
+                        j += 1
+                    # 如果是项目符号，转换为步骤编号
+                    elif next_line.strip().startswith('-') and next_line.strip() != '-':
+                        step_num = len(steps) + 1
+                        steps.append(f"{step_num}. {next_line.strip()[1:].strip()}")
+                        j += 1
+                    # 如果是空行，跳过
+                    elif next_line.strip() == '':
+                        j += 1
+                    # 如果是普通文本，可能是步骤内容
+                    elif not next_line.strip().startswith(('风险等级：', '预防建议：', '隐患类型：')):
+                        # 检查是否是步骤内容
+                        if steps and not next_line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '-')):
+                            # 添加到上一个步骤
+                            if steps:
+                                steps[-1] = steps[-1] + ' ' + next_line.strip()
+                                j += 1
+                            else:
+                                steps.append(f"{len(steps) + 1}. {next_line.strip()}")
+                                j += 1
+                        else:
+                            break
+                    else:
+                        break
+                
+                # 添加所有步骤到新行列表
+                for step in steps:
+                    new_lines.append(step)
+                
+                i = j
+            else:
+                i += 1
+        
+        result = '\n'.join(new_lines)
+    
+    # 处理预防建议的格式
+    if '预防建议：' in result:
+        # 确保预防建议标题后有换行
+        result = result.replace('预防建议：', '预防建议：\n')
+        
+        # 处理预防建议内容，确保每个建议都有换行
+        lines = result.split('\n')
+        new_lines = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            new_lines.append(line)
+            
+            # 如果是预防建议标题，处理后续的建议
+            if '预防建议：' in line:
+                j = i + 1
+                suggestions = []
+                
+                # 收集所有建议
+                while j < len(lines):
+                    next_line = lines[j]
+                    
+                    # 如果遇到下一个标题，停止收集
+                    if any(next_line.strip().startswith(section) for section in required_sections):
+                        break
+                    
+                    # 如果是项目符号，添加到建议列表
+                    if next_line.strip().startswith('-') and next_line.strip() != '-':
+                        suggestions.append(next_line)
+                        j += 1
+                    # 如果是空行，跳过
+                    elif next_line.strip() == '':
+                        j += 1
+                    # 如果是普通文本，可能是建议内容
+                    elif not next_line.strip().startswith(('风险等级：', '处置步骤：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
+                        # 转换为项目符号
+                        suggestions.append(f"- {next_line.strip()}")
+                        j += 1
+                    else:
+                        break
+                
+                # 添加所有建议到新行列表
+                for suggestion in suggestions:
+                    new_lines.append(suggestion)
+                
+                i = j
+            else:
+                i += 1
+        
+        result = '\n'.join(new_lines)
+    
+    # 处理处置步骤的编号格式 - 重新处理确保每个步骤都有换行
+    if '处置步骤：' in result:
+        # 分割成行
+        lines = result.split('\n')
+        new_lines = []
+        
+        # 找到处置步骤的位置
+        step_index = -1
+        for i, line in enumerate(lines):
+            if '处置步骤：' in line:
+                step_index = i
+                break
+        
+        if step_index != -1:
+            # 添加处置步骤标题
+            new_lines.append(lines[step_index])
+            
+            # 处理后续的步骤
+            i = step_index + 1
+            while i < len(lines):
+                line = lines[i]
+                
+                # 如果遇到下一个标题，停止处理
+                if any(line.strip().startswith(section) for section in required_sections):
+                    break
+                
+                # 如果是步骤编号，添加并确保换行
+                if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
+                    new_lines.append(line)
+                    i += 1
+                # 如果是项目符号，转换为步骤编号
+                elif line.strip().startswith('-') and line.strip() != '-':
+                    step_num = len([l for l in new_lines if l.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.'))]) + 1
+                    new_lines.append(f"{step_num}. {line.strip()[1:].strip()}")
+                    i += 1
+                # 如果是空行，跳过
+                elif line.strip() == '':
+                    i += 1
+                # 如果是普通文本，可能是步骤内容
+                elif not line.strip().startswith(('风险等级：', '预防建议：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '-')):
+                    # 添加到上一个步骤
+                    if new_lines and new_lines[-1].strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
+                        new_lines[-1] = new_lines[-1] + ' ' + line.strip()
+                        i += 1
+                    else:
+                        # 创建新的步骤
+                        step_num = len([l for l in new_lines if l.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.'))]) + 1
+                        new_lines.append(f"{step_num}. {line.strip()}")
+                        i += 1
+                else:
+                    break
+            
+            # 添加处理后的步骤
+            result_lines = lines[:step_index] + new_lines
+            result = '\n'.join(result_lines)
+    
+    # 处理预防建议的格式 - 重新处理确保每个建议都有换行
+    if '预防建议：' in result:
+        # 分割成行
+        lines = result.split('\n')
+        new_lines = []
+        
+        # 找到预防建议的位置
+        suggestion_index = -1
+        for i, line in enumerate(lines):
+            if '预防建议：' in line:
+                suggestion_index = i
+                break
+        
+        if suggestion_index != -1:
+            # 添加预防建议标题
+            new_lines.append(lines[suggestion_index])
+            
+            # 处理后续的建议
+            i = suggestion_index + 1
+            while i < len(lines):
+                line = lines[i]
+                
+                # 如果遇到下一个标题，停止处理
+                if any(line.strip().startswith(section) for section in required_sections):
+                    break
+                
+                # 如果是项目符号，添加并确保换行
+                if line.strip().startswith('-') and line.strip() != '-':
+                    new_lines.append(line)
+                    i += 1
+                # 如果是空行，跳过
+                elif line.strip() == '':
+                    i += 1
+                # 如果是普通文本，转换为项目符号
+                elif not line.strip().startswith(('风险等级：', '处置步骤：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
+                    new_lines.append(f"- {line.strip()}")
+                    i += 1
+                else:
+                    break
+            
+            # 添加处理后的建议
+            result_lines = lines[:suggestion_index] + new_lines
+            result = '\n'.join(result_lines)
+    
+    return result
 
 @router.post("/ask")
 def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):

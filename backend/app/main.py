@@ -22,6 +22,7 @@ app.include_router(qa.router)
 app.include_router(user.router)
 app.include_router(image_inspect.router)
 app.include_router(inspection.router)
+app.include_router(inspection.frontend_router)
 
 @app.get("/")
 def root():

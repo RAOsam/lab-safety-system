@@ -17,9 +17,7 @@
               class="message-item"
               :class="message.role === 'user' ? 'user-message' : 'ai-message'"
             >
-              <div class="message-content">
-                {{ message.content }}
-              </div>
+              <div class="message-content" style="white-space: pre-wrap;">{{ message.content }}</div>
             </div>
             
             <!-- 加载状态 -->
@@ -104,7 +102,10 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
-    const res = await axios.post('/api/qa', { question: message })
+    const res = await axios.post('/api/qa/ask', { 
+      user_id: 1, // 临时使用固定用户ID，实际应该从用户登录状态获取
+      question: message 
+    })
     
     messages.value.push({
       role: 'assistant',

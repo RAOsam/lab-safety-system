@@ -16,7 +16,7 @@ class User(Base):
     lab_name = Column(String(100))
     phone = Column(String(20))
     email = Column(String(100))
-    role = Column(Enum(UserRole), default=UserRole.USER)
+    role = Column(String(20), default=UserRole.USER.value)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, onupdate=func.now())
     

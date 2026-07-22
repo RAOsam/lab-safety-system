@@ -61,23 +61,60 @@
           <div v-else class="result-content">
             <h2 class="result-title">识别结果</h2>
             
-            <div v-if="analysisResult.length > 0" class="dangers-list">
-              <div 
-                v-for="(item, index) in analysisResult" 
-                :key="index" 
-                class="danger-item"
-              >
-                <div class="danger-header">
-                  <span class="danger-label">{{ item.class }}</span>
-                  <span class="danger-confidence">置信度: {{ (item.confidence * 100).toFixed(1) }}%</span>
-                </div>
-                <div class="danger-coordinates">
-                  位置: X: {{ item.x }}, Y: {{ item.y }}
+            <!-- 安全隐患概览 -->
+            <div v-if="analysisResult.has_hazard" class="hazard-alert">
+              <span class="hazard-icon">⚠️</span>
+              <span>发现安全隐患</span>
+            </div>
+            <div v-else class="safe-alert">
+              <span class="safe-icon">✅</span>
+              <span>未发现明显安全隐患</span>
+            </div>
+
+            <!-- 检测到的物体 -->
+            <div v-if="analysisResult.detections && analysisResult.detections.length > 0" class="detections-section">
+              <h3 class="section-title">检测到的物体</h3>
+              <div class="detections-list">
+                <div 
+                  v-for="(item, index) in analysisResult.detections" 
+                  :key="index" 
+                  class="detection-item"
+                >
+                  <span class="detection-label">{{ item.class }}</span>
+                  <span class="detection-confidence">置信度: {{ (item.confidence * 100).toFixed(1) }}%</span>
                 </div>
               </div>
             </div>
-            <div v-else class="no-danger">
-              <p>未检测到明显的安全隐患</p>
+
+            <!-- 安全隐患分析 -->
+            <div v-if="analysisResult.hazards && analysisResult.hazards.length > 0" class="hazards-section">
+              <h3 class="section-title">安全隐患分析</h3>
+              <div class="hazards-list">
+                <div 
+                  v-for="(hazard, index) in analysisResult.hazards" 
+                  :key="index" 
+                  class="hazard-item"
+                >
+                  <span class="hazard-number">{{ index + 1 }}</span>
+                  <span class="hazard-text">{{ hazard }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 处置建议 -->
+            <div v-if="analysisResult.suggestions && analysisResult.suggestions.length > 0" class="suggestions-section">
+              <h3 class="section-title">处置建议</h3>
+              <div 
+                v-for="(suggestion, index) in analysisResult.suggestions" 
+                :key="index" 
+                class="suggestion-item"
+              >
+                <div class="suggestion-header">
+                  <span class="suggestion-icon">📋</span>
+                  <span class="suggestion-title">{{ suggestion.hazard }}</span>
+                </div>
+                <div class="suggestion-content">{{ suggestion.advice }}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -153,15 +190,15 @@ const analyzeImage = async () => {
 
   try {
     const formData = new FormData()
-    formData.append('image', imageFile.value)
+    formData.append('file', imageFile.value)
 
-    const res = await axios.post('/api/detect', formData, {
+    const res = await axios.post('/api/image/inspect', formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
     })
 
-    analysisResult.value = res.data.detections
+    analysisResult.value = res.data
     ElMessage.success('识别完成')
   } catch (error) {
     console.error('识别失败:', error)
@@ -284,6 +321,8 @@ const clearImage = () => {
   border: 1px solid #e9ecef;
   padding: 24px;
   min-height: 400px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
 }
 
 .result-placeholder {
@@ -312,53 +351,155 @@ const clearImage = () => {
   border-bottom: 1px solid #e9ecef;
 }
 
-.dangers-list {
+/* 安全状态提示 */
+.hazard-alert,
+.safe-alert {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-height: 340px;
-  overflow-y: auto;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
-.danger-item {
+.hazard-alert {
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  color: #c53030;
+}
+
+.safe-alert {
+  background: #f0fff4;
+  border: 1px solid #c6f6d5;
+  color: #276749;
+}
+
+.hazard-icon,
+.safe-icon {
+  font-size: 18px;
+}
+
+/* 检测到的物体 */
+.detections-section,
+.hazards-section,
+.suggestions-section {
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.detections-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detection-item {
+  background: #f0f4ff;
+  border: 1px solid #d0d9f0;
+  border-radius: 4px;
+  padding: 6px 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.detection-label {
+  font-weight: 600;
+  color: #2b4f8c;
+  font-size: 13px;
+}
+
+.detection-confidence {
+  font-size: 11px;
+  color: #666;
+}
+
+/* 安全隐患列表 */
+.hazards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hazard-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
   background: #fff5f5;
   border: 1px solid #ffe0e0;
   border-radius: 4px;
-  padding: 12px;
 }
 
-.danger-header {
+.hazard-number {
+  background: #c53030;
+  color: white;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-}
-
-.danger-label {
+  justify-content: center;
+  font-size: 12px;
   font-weight: 600;
-  color: #c53030;
+  flex-shrink: 0;
+}
+
+.hazard-text {
+  font-size: 13px;
+  color: #333;
+  line-height: 1.5;
+}
+
+/* 处置建议 */
+.suggestions-section {
+  margin-bottom: 0;
+}
+
+.suggestion-item {
+  background: #f9fafb;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.suggestion-item:last-child {
+  margin-bottom: 0;
+}
+
+.suggestion-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.suggestion-icon {
+  font-size: 16px;
+}
+
+.suggestion-title {
   font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
 }
 
-.danger-confidence {
-  font-size: 12px;
-  color: #666;
-}
-
-.danger-coordinates {
-  font-size: 12px;
-  color: #666;
-}
-
-.no-danger {
-  text-align: center;
-  padding: 40px;
-}
-
-.no-danger p {
-  font-size: 14px;
-  color: #666;
-  margin: 0;
+.suggestion-content {
+  font-size: 13px;
+  color: #555;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 /* 响应式设计 */
@@ -369,6 +510,7 @@ const clearImage = () => {
   
   .result-section {
     min-height: 300px;
+    max-height: none;
   }
 }
 

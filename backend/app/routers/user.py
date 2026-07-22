@@ -19,9 +19,9 @@ class UserCreate(BaseModel):
 class UserResponse(BaseModel):
     id: int
     username: str
-    full_name: str = None
-    lab_name: str = None
-    role: str = None
+    full_name: str | None = None
+    lab_name: str | None = None
+    role: str | None = None
 
 class LoginRequest(BaseModel):
     username: str
@@ -49,7 +49,7 @@ def register(user: UserCreate, db: Session = Depends(lambda: SessionLocal())):
         lab_name=user.lab_name,
         phone=user.phone,
         email=user.email,
-        role=UserRole.USER
+        role=UserRole.USER.value
     )
     db.add(new_user)
     db.commit()
@@ -64,7 +64,7 @@ def login(request: LoginRequest, db: Session = Depends(lambda: SessionLocal())):
     
     # 创建访问令牌
     access_token = create_access_token(
-        data={"sub": user.id, "username": user.username, "role": user.role.value},
+        data={"sub": user.id, "username": user.username, "role": user.role},
         expires_delta=timedelta(minutes=30)
     )
     
@@ -76,7 +76,7 @@ def login(request: LoginRequest, db: Session = Depends(lambda: SessionLocal())):
             "username": user.username,
             "full_name": user.full_name,
             "lab_name": user.lab_name,
-            "role": user.role.value
+            "role": user.role
         }
     }
 
@@ -93,7 +93,7 @@ def get_current_user_info(current_user: dict = Depends(get_current_user)):
 def get_user_list(current_user: dict = Depends(get_admin_user), db: Session = Depends(lambda: SessionLocal())):
     """获取用户列表（管理员权限）"""
     users = db.query(User).all()
-    return [{"id": u.id, "username": u.username, "full_name": u.full_name, "lab_name": u.lab_name, "role": u.role.value} for u in users]
+    return [{"id": u.id, "username": u.username, "full_name": u.full_name, "lab_name": u.lab_name, "role": u.role} for u in users]
 
 @router.put("/password", response_model=dict)
 def change_password(
