@@ -117,7 +117,7 @@ const sendMessage = async () => {
 
   try {
     const res = await axios.post('/api/qa/ask', { 
-      user_id: getUserId()
+      user_id: getUserId(),
       question: message 
     })
     
