@@ -22,26 +22,26 @@ class ApiClient:
             self.provider = "default"
         print(f"API提供商: {self.provider}")
 
+    def _get_model_name(self):
+        """获取当前提供商对应的模型名称"""
+        if self.provider == "aliyun":
+            return "qwen3.6-plus"
+        elif self.provider == "siliconflow":
+            return "Qwen/Qwen3-8B"
+        elif self.provider == "openai":
+            return "gpt-4o-mini"
+        else:
+            return "Qwen/Qwen2-7B-Instruct"
+
     def generate(self, prompt: str, max_new_tokens=512):
         headers = {
             "Content-Type": "application/json",
         }
         
         # 根据提供商设置不同的授权方式
-        if self.provider == "aliyun":
+        if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
-            model_name = "qwen3.6-plus"
-        elif self.provider == "siliconflow":
-            headers["Authorization"] = f"Bearer {self.api_key}"
-            model_name = "Qwen/Qwen3-8B"
-            print(f"使用 SiliconFlow 模型: {model_name}")
-        elif self.provider == "openai":
-            headers["Authorization"] = f"Bearer {self.api_key}"
-            model_name = "gpt-4o-mini"
-        else:
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
-            model_name = "Qwen/Qwen2-7B-Instruct"
+        model_name = self._get_model_name()
 
         data = {
             "model": model_name,

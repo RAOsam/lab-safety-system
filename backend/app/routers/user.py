@@ -123,3 +123,106 @@ def delete_user(user_id: int, current_user: dict = Depends(get_admin_user), db: 
     db.delete(user)
     db.commit()
     return {"msg": "删除成功"}
+
+# ===== 前端兼容路由（匹配 UserManage.vue 的调用方式） =====
+# 前端调用: GET /api/users, POST /api/users, PUT /api/users/:id, DELETE /api/users/:id
+# 前端字段: username, password, email, phone, department, role
+
+from typing import Optional
+
+frontend_router = APIRouter(prefix="/api", tags=["用户管理(前端兼容)"])
+
+class FrontendUserCreate(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    department: Optional[str] = None
+    role: Optional[str] = "user"
+
+class FrontendUserUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    department: Optional[str] = None
+    role: Optional[str] = None
+
+@frontend_router.get("/users")
+def frontend_user_list(current_user: dict = Depends(get_admin_user), db: Session = Depends(lambda: SessionLocal())):
+    """获取用户列表（管理员权限）"""
+    users = db.query(User).all()
+    result = []
+    for u in users:
+        result.append({
+            "id": u.id,
+            "username": u.username,
+            "full_name": u.full_name,
+            "lab_name": u.lab_name,
+            "email": u.email,
+            "phone": u.phone,
+            "department": u.lab_name,
+            "role": u.role,
+            "created_at": u.created_at.isoformat() if u.created_at else None
+        })
+    return result
+
+@frontend_router.post("/users")
+def frontend_create_user(user: FrontendUserCreate, current_user: dict = Depends(get_admin_user), db: Session = Depends(lambda: SessionLocal())):
+    """创建用户（管理员权限）"""
+    existing = db.query(User).filter(User.username == user.username).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="用户名已存在")
+    
+    new_user = User(
+        username=user.username,
+        password_hash=get_password_hash(user.password),
+        full_name=user.username,
+        lab_name=user.department,
+        phone=user.phone,
+        email=user.email,
+        role=user.role if user.role in ["admin", "user"] else "user"
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {
+        "id": new_user.id,
+        "username": new_user.username,
+        "full_name": new_user.full_name,
+        "lab_name": new_user.lab_name,
+        "email": new_user.email,
+        "phone": new_user.phone,
+        "department": new_user.lab_name,
+        "role": new_user.role,
+        "created_at": new_user.created_at.isoformat() if new_user.created_at else None
+    }
+
+@frontend_router.put("/users/{user_id}")
+def frontend_update_user(user_id: int, update: FrontendUserUpdate, current_user: dict = Depends(get_admin_user), db: Session = Depends(lambda: SessionLocal())):
+    """更新用户（管理员权限）"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    if update.email is not None:
+        user.email = update.email
+    if update.phone is not None:
+        user.phone = update.phone
+    if update.department is not None:
+        user.lab_name = update.department
+    if update.role is not None:
+        user.role = update.role if update.role in ["admin", "user"] else user.role
+    
+    db.commit()
+    db.refresh(user)
+    return {"msg": "更新成功"}
+
+@frontend_router.delete("/users/{user_id}")
+def frontend_delete_user(user_id: int, current_user: dict = Depends(get_admin_user), db: Session = Depends(lambda: SessionLocal())):
+    """删除用户（管理员权限）"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    db.delete(user)
+    db.commit()
+    return {"msg": "删除成功"}

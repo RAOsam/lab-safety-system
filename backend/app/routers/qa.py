@@ -50,7 +50,7 @@ CHAT_PROMPT_TEMPLATE = """你是一位友好的实验室安全助手。用户现
 """
 
 # 优化的关键词检测
-GREETING_KEYWORDS = ["你好", "您好", "嗨", "Hello", "Hi", "早上好", "下午好", "晚上好", "拜拜", "再见", "谢谢", "感谢", "你是谁", "介绍一下", "请问", "想问"]
+GREETING_KEYWORDS = ["你好", "您好", "嗨", "Hello", "Hi", "早上好", "下午好", "晚上好", "拜拜", "再见", "谢谢", "感谢", "你是谁", "介绍一下"]
 
 # 安全关键词列表
 SAFETY_KEYWORDS = ["安全", "隐患", "风险", "危险", "泄漏", "火灾", "爆炸", "中毒", "腐蚀", "防护", "应急", "事故", "急救", "泄漏处理", "安全操作", "防护措施", "安全规程"]
@@ -84,320 +84,86 @@ def is_safety_related(question: str) -> bool:
 
 def clean_answer(answer: str) -> str:
     """清理回答，移除不相关内容和重复标题，保留格式"""
-    # 移除YOLO检测结果（如surfboard、chair等）
-    yolo_classes = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 
-                    'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat', 
-                    'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 
-                    'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball', 
-                    'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket', 
-                    'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 
-                    'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 
-                    'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 
-                    'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 
-                    'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 
-                    'toothbrush', 'fire extinguisher', 'trash can']
+    # YOLO类别列表（用于过滤不相关检测结果）
+    YOLO_CLASSES = set([
+        'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat',
+        'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench', 'bird', 'cat',
+        'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack',
+        'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'sports ball',
+        'kite', 'baseball bat', 'baseball glove', 'skateboard', 'surfboard', 'tennis racket',
+        'bottle', 'wine glass', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple',
+        'sandwich', 'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
+        'chair', 'couch', 'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop',
+        'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+        'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
+        'toothbrush', 'fire extinguisher', 'trash can'
+    ])
+    
+    REQUIRED_SECTIONS = ['隐患类型：', '风险等级：', '处置步骤：', '预防建议：']
     
     lines = answer.split('\n')
-    cleaned_lines = []
+    cleaned = []
     seen_sections = set()
     
+    def is_yolo_line(line):
+        """判断是否为YOLO检测结果行"""
+        lower = line.lower()
+        for cls in YOLO_CLASSES:
+            if cls in lower:
+                return True
+        return False
+    
+    def is_confidence_line(line):
+        """判断是否为置信度行（如 72.6%）"""
+        return '%' in line and (line.strip().endswith('%') or ('(' in line and '%)' in line))
+    
+    def get_section_key(line):
+        """提取行对应的章节键名"""
+        for section in REQUIRED_SECTIONS:
+            if line.strip().startswith(section.rstrip('：')):
+                return section
+        return None
+    
+    # 第一遍：过滤YOLO/置信度结果，去重章节标题
     for line in lines:
-        # 跳过空行
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if is_yolo_line(stripped) or is_confidence_line(stripped):
+            continue
+        if '检测到的物体' in stripped or 'detections' in stripped.lower():
             continue
         
-        # 跳过YOLO检测结果行
-        contains_yolo = False
-        for cls in yolo_classes:
-            if cls.lower() in line.lower():
-                contains_yolo = True
-                break
-        if contains_yolo:
-            continue
+        section_key = get_section_key(stripped)
+        if section_key:
+            if section_key in seen_sections:
+                continue  # 跳过重复标题
+            seen_sections.add(section_key)
         
-        # 跳过包含置信度的行（如72.6%）
-        if '%' in line and (line.strip().endswith('%') or '(' in line and '%)' in line):
-            continue
-        
-        # 跳过检测到的物体标题
-        if '检测到的物体' in line or 'detections' in line.lower():
-            continue
-        
-        # 处理重复的标题
-        line_stripped = line.strip()
-        if line_stripped.startswith('隐患类型：'):
-            if '隐患类型' not in seen_sections:
-                cleaned_lines.append(line)
-                seen_sections.add('隐患类型')
-        elif line_stripped.startswith('风险等级：'):
-            if '风险等级' not in seen_sections:
-                cleaned_lines.append(line)
-                seen_sections.add('风险等级')
-        elif line_stripped.startswith('处置步骤：') or line_stripped.startswith('处置步骤:'):
-            if '处置步骤' not in seen_sections:
-                cleaned_lines.append(line)
-                seen_sections.add('处置步骤')
-            else:
-                # 如果已经有处置步骤标题，检查是否是内容行
-                if not line_stripped.startswith('处置步骤'):
-                    cleaned_lines.append(line)
-        elif line_stripped.startswith('预防建议：') or line_stripped.startswith('预防建议:'):
-            if '预防建议' not in seen_sections:
-                cleaned_lines.append(line)
-                seen_sections.add('预防建议')
-            else:
-                # 如果已经有预防建议标题，检查是否是内容行
-                if not line_stripped.startswith('预防建议'):
-                    cleaned_lines.append(line)
-        else:
-            # 普通内容行
-            cleaned_lines.append(line)
+        cleaned.append(stripped)
     
-    # 确保回答格式正确，如果缺少标题则添加
-    result = '\n'.join(cleaned_lines)
+    if not cleaned:
+        return answer
     
-    # 检查是否包含所有必要的标题
-    required_sections = ['隐患类型：', '风险等级：', '处置步骤：', '预防建议：']
-    missing_sections = [section for section in required_sections if section not in result]
+    # 第二遍：确保必要章节存在，补齐缺失
+    result = '\n'.join(cleaned)
+    missing = [s for s in REQUIRED_SECTIONS if s not in result]
     
-    # 如果缺少标题，尝试从内容中提取并添加
-    if missing_sections and '隐患类型' in result.lower():
-        lines = result.split('\n')
-        new_lines = []
-        
-        for line in lines:
-            new_lines.append(line)
-            
-            # 如果当前行是某个标题，检查是否需要添加缺失的标题
-            if any(line.strip().startswith(section[:-1]) for section in required_sections):
-                for missing in missing_sections:
-                    if missing not in new_lines:
-                        new_lines.append(missing)
+    for section in missing:
+        # 在最后一个已有的章节标题后插入
+        for i, line in enumerate(cleaned):
+            if get_section_key(line):
+                # 检查是否后面已经有了缺失的章节
+                has_after = False
+                for j in range(i + 1, len(cleaned)):
+                    if get_section_key(cleaned[j]):
                         break
-        
-        result = '\n'.join(new_lines)
-    
-    # 确保JSON序列化时保留换行符
-    # 使用双换行符来分隔不同的部分
-    result = result.replace('\n处置步骤：', '\n\n处置步骤：')
-    result = result.replace('\n预防建议：', '\n\n预防建议：')
-    result = result.replace('\n隐患类型：', '\n\n隐患类型：')
-    result = result.replace('\n风险等级：', '\n\n风险等级：')
-    
-    # 处理处置步骤的编号格式
-    if '处置步骤：' in result:
-        # 确保处置步骤编号格式正确
-        result = result.replace('处置步骤：', '处置步骤：\n')
-        
-        # 处理处置步骤内容，确保每个步骤都有换行
-        lines = result.split('\n')
-        new_lines = []
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            new_lines.append(line)
-            
-            # 如果是处置步骤标题，处理后续的步骤
-            if '处置步骤：' in line:
-                j = i + 1
-                steps = []
-                
-                # 收集所有步骤
-                while j < len(lines):
-                    next_line = lines[j]
-                    
-                    # 如果遇到下一个标题，停止收集
-                    if any(next_line.strip().startswith(section) for section in required_sections):
+                    if section in cleaned[j]:
+                        has_after = True
                         break
-                    
-                    # 如果是步骤编号，添加到步骤列表
-                    if next_line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                        steps.append(next_line)
-                        j += 1
-                    # 如果是项目符号，转换为步骤编号
-                    elif next_line.strip().startswith('-') and next_line.strip() != '-':
-                        step_num = len(steps) + 1
-                        steps.append(f"{step_num}. {next_line.strip()[1:].strip()}")
-                        j += 1
-                    # 如果是空行，跳过
-                    elif next_line.strip() == '':
-                        j += 1
-                    # 如果是普通文本，可能是步骤内容
-                    elif not next_line.strip().startswith(('风险等级：', '预防建议：', '隐患类型：')):
-                        # 检查是否是步骤内容
-                        if steps and not next_line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '-')):
-                            # 添加到上一个步骤
-                            if steps:
-                                steps[-1] = steps[-1] + ' ' + next_line.strip()
-                                j += 1
-                            else:
-                                steps.append(f"{len(steps) + 1}. {next_line.strip()}")
-                                j += 1
-                        else:
-                            break
-                    else:
-                        break
-                
-                # 添加所有步骤到新行列表
-                for step in steps:
-                    new_lines.append(step)
-                
-                i = j
-            else:
-                i += 1
-        
-        result = '\n'.join(new_lines)
-    
-    # 处理预防建议的格式
-    if '预防建议：' in result:
-        # 确保预防建议标题后有换行
-        result = result.replace('预防建议：', '预防建议：\n')
-        
-        # 处理预防建议内容，确保每个建议都有换行
-        lines = result.split('\n')
-        new_lines = []
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            new_lines.append(line)
-            
-            # 如果是预防建议标题，处理后续的建议
-            if '预防建议：' in line:
-                j = i + 1
-                suggestions = []
-                
-                # 收集所有建议
-                while j < len(lines):
-                    next_line = lines[j]
-                    
-                    # 如果遇到下一个标题，停止收集
-                    if any(next_line.strip().startswith(section) for section in required_sections):
-                        break
-                    
-                    # 如果是项目符号，添加到建议列表
-                    if next_line.strip().startswith('-') and next_line.strip() != '-':
-                        suggestions.append(next_line)
-                        j += 1
-                    # 如果是空行，跳过
-                    elif next_line.strip() == '':
-                        j += 1
-                    # 如果是普通文本，可能是建议内容
-                    elif not next_line.strip().startswith(('风险等级：', '处置步骤：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                        # 转换为项目符号
-                        suggestions.append(f"- {next_line.strip()}")
-                        j += 1
-                    else:
-                        break
-                
-                # 添加所有建议到新行列表
-                for suggestion in suggestions:
-                    new_lines.append(suggestion)
-                
-                i = j
-            else:
-                i += 1
-        
-        result = '\n'.join(new_lines)
-    
-    # 处理处置步骤的编号格式 - 重新处理确保每个步骤都有换行
-    if '处置步骤：' in result:
-        # 分割成行
-        lines = result.split('\n')
-        new_lines = []
-        
-        # 找到处置步骤的位置
-        step_index = -1
-        for i, line in enumerate(lines):
-            if '处置步骤：' in line:
-                step_index = i
-                break
-        
-        if step_index != -1:
-            # 添加处置步骤标题
-            new_lines.append(lines[step_index])
-            
-            # 处理后续的步骤
-            i = step_index + 1
-            while i < len(lines):
-                line = lines[i]
-                
-                # 如果遇到下一个标题，停止处理
-                if any(line.strip().startswith(section) for section in required_sections):
+                if not has_after:
+                    result = result + '\n' + section
                     break
-                
-                # 如果是步骤编号，添加并确保换行
-                if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                    new_lines.append(line)
-                    i += 1
-                # 如果是项目符号，转换为步骤编号
-                elif line.strip().startswith('-') and line.strip() != '-':
-                    step_num = len([l for l in new_lines if l.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.'))]) + 1
-                    new_lines.append(f"{step_num}. {line.strip()[1:].strip()}")
-                    i += 1
-                # 如果是空行，跳过
-                elif line.strip() == '':
-                    i += 1
-                # 如果是普通文本，可能是步骤内容
-                elif not line.strip().startswith(('风险等级：', '预防建议：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '-')):
-                    # 添加到上一个步骤
-                    if new_lines and new_lines[-1].strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                        new_lines[-1] = new_lines[-1] + ' ' + line.strip()
-                        i += 1
-                    else:
-                        # 创建新的步骤
-                        step_num = len([l for l in new_lines if l.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.'))]) + 1
-                        new_lines.append(f"{step_num}. {line.strip()}")
-                        i += 1
-                else:
-                    break
-            
-            # 添加处理后的步骤
-            result_lines = lines[:step_index] + new_lines
-            result = '\n'.join(result_lines)
-    
-    # 处理预防建议的格式 - 重新处理确保每个建议都有换行
-    if '预防建议：' in result:
-        # 分割成行
-        lines = result.split('\n')
-        new_lines = []
-        
-        # 找到预防建议的位置
-        suggestion_index = -1
-        for i, line in enumerate(lines):
-            if '预防建议：' in line:
-                suggestion_index = i
-                break
-        
-        if suggestion_index != -1:
-            # 添加预防建议标题
-            new_lines.append(lines[suggestion_index])
-            
-            # 处理后续的建议
-            i = suggestion_index + 1
-            while i < len(lines):
-                line = lines[i]
-                
-                # 如果遇到下一个标题，停止处理
-                if any(line.strip().startswith(section) for section in required_sections):
-                    break
-                
-                # 如果是项目符号，添加并确保换行
-                if line.strip().startswith('-') and line.strip() != '-':
-                    new_lines.append(line)
-                    i += 1
-                # 如果是空行，跳过
-                elif line.strip() == '':
-                    i += 1
-                # 如果是普通文本，转换为项目符号
-                elif not line.strip().startswith(('风险等级：', '处置步骤：', '隐患类型：', '1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.', '10.')):
-                    new_lines.append(f"- {line.strip()}")
-                    i += 1
-                else:
-                    break
-            
-            # 添加处理后的建议
-            result_lines = lines[:suggestion_index] + new_lines
-            result = '\n'.join(result_lines)
     
     return result
 
@@ -483,10 +249,15 @@ def ask(question: Question, db: Session = Depends(lambda: SessionLocal())):
     return {"answer": answer, "risk_level": risk}
 
 def generate_stream_response(prompt: str):
-    """生成流式响应"""
+    """生成流式响应（使用 ApiClient 的配置）"""
     try:
         import requests
         from ..config import API_BASE_URL, API_KEY
+        from ..llm_client import ApiClient
+        
+        # 使用 ApiClient 获取配置的模型名
+        client = ApiClient()
+        model_name = client._get_model_name()
         
         headers = {
             "Content-Type": "application/json",
@@ -494,7 +265,7 @@ def generate_stream_response(prompt: str):
         }
         
         data = {
-            "model": "Qwen/Qwen2-7B-Instruct",
+            "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 512,
             "temperature": 0.7,
@@ -514,7 +285,7 @@ def generate_stream_response(prompt: str):
             if line:
                 line = line.decode('utf-8')
                 if line.startswith('data: '):
-                    data_str = line[6:]  # 移除 'data: ' 前缀
+                    data_str = line[6:]
                     if data_str == '[DONE]':
                         break
                     try:
@@ -523,7 +294,6 @@ def generate_stream_response(prompt: str):
                             delta = chunk['choices'][0].get('delta', {})
                             content = delta.get('content', '')
                             if content:
-                                # SSE格式：data: JSON内容
                                 yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
                     except json.JSONDecodeError:
                         continue

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routers import qa, user, image_inspect, inspection
+from .routers.user import frontend_router as user_frontend_router
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -23,6 +24,7 @@ app.include_router(user.router)
 app.include_router(image_inspect.router)
 app.include_router(inspection.router)
 app.include_router(inspection.frontend_router)
+app.include_router(user_frontend_router)
 
 @app.get("/")
 def root():

@@ -4,53 +4,12 @@ os.environ["HUGGINGFACE_HUB_CACHE"] = "./.cache/huggingface"
 
 import json
 import chromadb
-
-class SentenceTransformerEmbedding:
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
-        self.model_name = model_name
-        self.model = None
-        self.dimensions = 384
-    
-    def load_model(self):
-        try:
-            from sentence_transformers import SentenceTransformer
-            print(f"正在加载 SentenceTransformer 模型: {self.model_name}")
-            print(f"使用镜像: {os.environ.get('HF_ENDPOINT')}")
-            self.model = SentenceTransformer(self.model_name)
-            self.dimensions = self.model.get_sentence_embedding_dimension()
-            print(f"模型加载成功，向量维度: {self.dimensions}")
-            return True
-        except Exception as e:
-            print(f"加载 SentenceTransformer 模型失败: {e}")
-            return False
-    
-    def __call__(self, input):
-        if self.model is None:
-            if not self.load_model():
-                return self._fallback_embedding(input)
-        
-        try:
-            embeddings = self.model.encode(input)
-            return embeddings.tolist() if hasattr(embeddings, 'tolist') else embeddings
-        except Exception as e:
-            print(f"生成嵌入失败，使用备用方案: {e}")
-            return self._fallback_embedding(input)
-    
-    def _fallback_embedding(self, input):
-        results = []
-        for text in input:
-            if isinstance(text, str):
-                hash_val = hash(text)
-                embedding = [(hash_val * (i + 1)) % 1000 / 1000 for i in range(self.dimensions)]
-            else:
-                embedding = [0.0] * self.dimensions
-            results.append(embedding)
-        return results
+from .embedding import SentenceTransformerEmbedding
 
 class DatasetLoader:
     def __init__(self):
         self.embedding_fn = SentenceTransformerEmbedding()
-    
+
     def init_chroma(self, persist_dir: str = "../data/vector_db"):
         from chromadb.config import Settings
         self.client = chromadb.PersistentClient(
@@ -60,15 +19,15 @@ class DatasetLoader:
         self.collection = self.client.get_or_create_collection(
             name="lab_safety_knowledge"
         )
-    
+
     def load_huggingface_dataset(self, dataset_name: str = "yujunzhou/LabSafety_Bench"):
         try:
             from datasets import load_dataset
             print(f"正在从 Hugging Face 镜像加载数据集: {dataset_name}")
             print(f"使用镜像: {os.environ.get('HF_ENDPOINT')}")
-            
+
             combined_data = []
-            
+
             dataset_mcq = load_dataset(dataset_name, name="MCQ", split="QA")
             print(f"MCQ数据集加载成功，共 {len(dataset_mcq)} 条记录")
             for item in dataset_mcq:
@@ -77,7 +36,7 @@ class DatasetLoader:
                     "answer": item.get("Explanation", "") + "\n正确答案: " + item.get("Correct Answer", ""),
                     "context": "; ".join(item.get("Category", [])) + " | " + item.get("Topic", "")
                 })
-            
+
             dataset_scenario = load_dataset(dataset_name, name="scenario", split="scenario")
             print(f"scenario数据集加载成功，共 {len(dataset_scenario)} 条记录")
             for item in dataset_scenario:
@@ -86,19 +45,19 @@ class DatasetLoader:
                     "answer": item.get("Answer", "") if "Answer" in item else item.get("Explanation", ""),
                     "context": item.get("Scenario", "") if "Scenario" in item else ""
                 })
-            
+
             print(f"合并后共 {len(combined_data)} 条记录")
             return combined_data
-            
+
         except Exception as e:
             print(f"加载数据集失败: {e}")
             return None
-    
+
     def load_local_json(self, file_path: str):
         if not os.path.exists(file_path):
             print(f"文件不存在: {file_path}")
             return None
-        
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
@@ -107,16 +66,16 @@ class DatasetLoader:
         except Exception as e:
             print(f"加载本地文件失败: {e}")
             return None
-    
+
     def import_to_chroma(self, data):
         if data is None or len(data) == 0:
             print("数据为空，无法导入")
             return 0
-        
+
         self.init_chroma()
-        
+
         print(f"开始生成嵌入向量，共 {len(data)} 条记录...")
-        
+
         contents = []
         for item in data:
             question = item.get("question", "")
@@ -124,9 +83,9 @@ class DatasetLoader:
             context = item.get("context", "")
             content = f"问题: {question}\n答案: {answer}\n上下文: {context}".strip()
             contents.append(content)
-        
+
         embeddings = self.embedding_fn(contents)
-        
+
         count = 0
         for idx, (content, embedding) in enumerate(zip(contents, embeddings)):
             try:
@@ -136,15 +95,15 @@ class DatasetLoader:
                     embeddings=[embedding]
                 )
                 count += 1
-                
+
                 if (idx + 1) % 100 == 0:
                     print(f"已导入 {idx + 1} 条记录")
             except Exception as e:
                 print(f"导入第 {idx} 条记录失败: {e}")
-        
+
         print(f"导入完成，共成功导入 {count} 条记录")
         return count
-    
+
     def clear_collection(self):
         try:
             self.init_chroma()
@@ -152,7 +111,7 @@ class DatasetLoader:
             print("已清空向量数据库")
         except Exception as e:
             print(f"清空失败: {e}")
-    
+
     def get_collection_stats(self):
         try:
             self.init_chroma()
@@ -162,7 +121,7 @@ class DatasetLoader:
         except Exception as e:
             print(f"获取统计信息失败: {e}")
             return 0
-    
+
     def add_sample_data(self):
         sample_data = [
             {
@@ -222,10 +181,10 @@ def main():
     loader = DatasetLoader()
     print("=== 当前向量数据库状态 ===")
     loader.get_collection_stats()
-    
+
     print("\n=== 尝试从 Hugging Face 镜像导入数据集 ===")
     data = loader.load_huggingface_dataset("yujunzhou/LabSafety_Bench")
-    
+
     if data:
         print("\n=== 清空旧数据 ===")
         loader.clear_collection()
@@ -234,7 +193,7 @@ def main():
     else:
         print("Hugging Face 数据集导入失败，使用示例数据")
         loader.add_sample_data()
-    
+
     print("\n=== 导入后状态 ===")
     loader.get_collection_stats()
 

@@ -80,6 +80,20 @@ const messages = ref([])
 const loading = ref(false)
 const chatContainer = ref(null)
 
+// 获取当前登录用户ID
+const getUserId = () => {
+  try {
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      const user = JSON.parse(userStr)
+      return user.id || 1
+    }
+  } catch (e) {
+    // ignore
+  }
+  return 1
+}
+
 // 快捷问题
 const quickQuestions = ref([
   '实验室有哪些基本安全规范？',
@@ -103,7 +117,7 @@ const sendMessage = async () => {
 
   try {
     const res = await axios.post('/api/qa/ask', { 
-      user_id: 1, // 临时使用固定用户ID，实际应该从用户登录状态获取
+      user_id: getUserId()
       question: message 
     })
     
